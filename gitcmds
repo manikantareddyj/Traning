@@ -12,12 +12,12 @@ git status
 git commit -m "1st commit" prasad
 git status
 git log
-git show cid
+git show cidfdfdf fdfdfdf 
 ---------------------------
-touch file2 file3 file4 file5
+touch file2 file3 file4 fi fdfdfle5
 ls
 git status
-git add file2 file3 file4 file5
+git add file2 file3 file4 file5 dfdfdfdfdfd
 or
 git add .
 or
