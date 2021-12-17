@@ -1,0 +1,104 @@
+sudo apt-get update -y
+sudo apt-get install apt-transport-https ca-certificates curl gnupg-agent software-properties-common -y
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
+sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable"
+sudo apt-get update -y
+sudo apt-get install docker-ce docker-ce-cli containerd.io -y
+sudo chown ubuntu:ubuntu /var/run/docker.sock
+docker version
+
+
+provider "aws" {
+access_key = "AKIA2EDSWCCWYPYUZA7W"
+secret_key ="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"
+   profile = "default"
+   region = "ap-south-1"
+   
+}
+
+
+
+resource "aws_instance" "server" {
+  ami           = "ami-052cef05d01020f1d"
+  instance_type = "t2.micro"
+  key_name = "dum"
+  subnet_id = "subnet-0fcea11505c06cef1"
+  security_group = "sg-0f6902a173da99556"
+
+  tags = {
+    Name = "server-1"
+  }
+}
+resource "aws_vpc" "vpc" {
+  cidr_block       = "10.81.0.0/16"
+  instance_tenancy = "default"
+
+  tags = {
+    Name = "vpc-test"
+  }
+}
+
+resource "aws_subnet" "public" {
+  vpc_id     = aws_vpc.vpc.id
+  cidr_block = "10.81.1.0/24"
+
+  tags = {
+    Name = "subnetpu-1"
+  }
+}
+
+resource "aws_internet_gateway" "igw" {
+  vpc_id = aws_vpc.vpc.id
+
+  tags = {
+    Name = "IGW-1"
+  }
+}
+
+
+resource "aws_route_table" "rr" {
+  vpc_id = aws_vpc.vpc.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.igw.id
+	}
+	tags = {
+	  Name = "rou"
+	  
+  }
+ }
+
+ 
+  resource "aws_route_table_association" "ras" {
+  subnet_id      = aws_subnet.public.id
+  route_table_id = aws_route_table.rr.id
+}
+
+
+resource "aws_security_group" "sg" {
+  name        = "sg1"
+  description = "Allow TLS inbound traffic"
+  vpc_id      = aws_vpc.vpc.id
+
+  ingress {
+    description      = "TLS from VPC"
+    from_port        = 22
+    to_port          = 22
+    protocol         = "tcp"
+    cidr_blocks      = [aws_vpc.vpc.cidr_block]
+    
+  }
+
+  egress {
+    from_port        = 0
+    to_port          = 0
+    protocol         = "-1"
+    cidr_blocks      = ["0.0.0.0/0"]
+    
+  }
+
+  tags = {
+    Name = "sg1"
+  }
+}

@@ -1,0 +1,357 @@
+Lanuch ubuntu instance t2.medium
+(Security Groups: 80 8080 443 6783 6784 6443)
+sudo su
+sudo apt-get update -y
+sudo apt-get install -y apt-transport-https
+sudo curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
+-----------------------------------------------------
+vi /etc/apt/sources.list.d/kubernetes.list
+----------------------------------------------------
+deb http://apt.kubernetes.io/ kubernetes-xenial main
+
+apt-get update -y
+apt-get install docker.io -y
+systemctl enable docker
+systemctl start docker
+usermod -a -G docker ubuntu
+apt-get install -y kubelet kubeadm kubectl kubernetes-cni
+note: if any error with cni exec below command ow no need
+sudo dpkg -i --force-overwrite /var/cache/apt/archives/kubernetes-cni_0.7.5-00_amd64.deb
+apt-get install -y kubelet kubeadm kubectl kubernetes-cni
+
+ADD C-GROUP's
+------------------------
+vi /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
+---------------------------------------------------------------------------------
+Environment="cgroup-driver=systemd/cgroup-driver=cgroupfs"  (add this line)
+
+create AMI   (note: devops-k8s)
+
+kubeadm init
+kubectl get nodes  (it will show some error)
+exit form root user
+now try to exec below commands
+mkdir -p $HOME/.kube
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+kubectl get nodes  :)
+kubectl get pods --all-namespaces
+sudo su
+sysctl net.bridge.bridge-nf-call-iptables=1
+exit
+kubectl version | base64 | tr -d '\n'  (it will create key)
+export kubever=$(kubectl version | base64 | tr -d '\n')
+kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=$kubever"  (to create a network)
+kubectl get pods --all-namespaces
+kubectl get nodes
+
+launch instance with this AMI
+(Security Group's 80 8080 8081 8083
+login into Node1
+sudo su
+copy command from master node (when we use kubeadm init command it list jion command copy paste in node1, node2 ...)
+
+EX:-
+kubeadm join 172.31.38.233:6443 --token oiqur0.u6actvi9k6bc5oex \
+    --discovery-token-ca-cert-hash sha256:a869eb97f1f6f2759a39645f5976130aeddb2604fc45bb1e949e67e04f3fc3f5
+
+kubeadm token create --print-join-command
+
+
+got to master
+
+kubectl get nodes
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+if you want k8s dashboard
+----------------------------------------
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/dashboard/v1.10.1/src/deploy/recommended/kubernetes-dashboard.yaml
+vi service.yaml
+--------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: admin-user
+  namespace: kube-system
+:wq!
+
+kubectl apply -f service.yaml
+
+vi role.yaml
+----------------
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: admin-user
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: admin-user
+  namespace: kube-system
+:wq!
+
+kubectl apply -f role.yaml
+kubectl -n kube-system describe secret $(kubectl -n kube-system get secret | grep admin-user | awk '{print  $1}')
+nohup kubectl proxy --address 0.0.0.0 --accept-hosts '.*' &
+kubectl -n kube-system get service kubernetes-dashboard
+here it will show clusterip
+kubectl -n kube-system edit service kubernetes-dashboard
+change here
+Type: ClusterIp in place NodePort
+kubectl -n kube-system get service kubernetes-dashboard
+
+then here it will list 443:30293/TCP  number like this
+this number we need to add in Security Group in master node
+now you can access k8s in browser 
+https://ip:30293
+and it will ask token 
+copy and paste here
+------------------------------------------------------------------------------------------------------------------------------------------
+
+POD
+====
+
+kubectl run testk8s --image=nginx
+kubectl get pods
+kubectl run test1k8s --image=nginx
+kubectl delete pod testk8s
+
+Pods
+Pods are the fundamental building blocks in Kubernetes.
+They are the smallest deployable unit. If, for example, you wanted to run an nginx Docker container then you would actually be running a pod.
+You can tell Kubernetes to run a pod for you with a single command.
+
+kubectl run kuard --generator=run-pod/v1 --image gcr.io/kuar-demo/kuard-amd64:1
+
+This may be a little intimidating so let’s break it down. kubectl is the command-line utility for interacting with your Kubernetes cluster.
+It has a `run` command that will instruct your Kubernetes cluster to run pods. The ----generator=run-pod/v1
+instructs kubectl that we want to run a pod (without a --generator the default is a deployment which we will see later).
+Finally we specify --image=gcr.io/kuar-demo/kuard-amd64:1 so that Kubernetes knows where it can find the Docker image for kuard.
+
+kubectl get pods
+kubectl get pods -o wide
+There are numerous ways to find a pod’s IP address, but the simplest is to specify a “wide” output when getting pod details.
+kubectl port-forward kuard 8080:8080
+This instructs kubectl to make port 8080 on our local machine connect to port 8080 on the container.
+With this, we should be able to navigate to localhost:8080 and see the kuard UI.
+
+kubectl delete pod kuard
+
+kubectl get pods --all-namespaces
+or
+kubectl get pods -A
+
+kubectl get pods -o wide --all-namespaces
+
+kubectl run pod1 --image=tutum/hello-world
+
+kubectl get pods
+kubectl describe pods pod-name
+
+vi pod.yaml
+----------------
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pod1
+  labels:
+    zone: prod
+    version: v1
+spec:
+  containers:
+  - name: container-1
+    image: nginx:latest
+    ports:
+    - containerPort: 8080
+
+
+kubectl create -f pod.yaml
+
+kubectl delete pods pod-name
+
+vi pod1.yaml
+-----------------
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pod2
+  labels:
+    zone: prod
+    version: v1
+spec:
+  containers:
+  - name: hello-cont1
+    image: tutum/hello-world
+    ports:
+    - containerPort: 83
+
+kubectl create -f pod1.yaml
+
+ReplicaSets:
+==========
+ReplicaSets are a higher-level API that gives you the ability to easily run multiple instances of a given pod. 
+You tell the ReplicaSets the number of pods that you want it to run and it will ensure that the exact number of pods are actually running.
+
+replicaset.yaml
+------------------
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: kuard
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: kuard
+  template:
+    metadata:
+      labels:
+        app: kuard
+    spec:
+      containers:
+      - name: kuard
+        image: gcr.io/kuar-demo/kuard-amd64:1
+
+kubectl create -f replicaset.yml
+kubectl get pods,replicasets --show-labels
+kubectl delete replicasets kuard
+kubectl apply -f *.yml
+
+As you can see, the ReplicaSet created five pods with the label app=kuard.
+Recall that earlier we said that the ReplicaSet will ensure that the exact number of pods that we asked for are running. 
+Let’s see how good the ReplicaSet is by killing a pod
+
+kubectl delete pod/kuard-fm8fd
+
+Then we check our pods and notice that the ReplicaSet has already replaced the missing pod.
+
+kubectl get pods
+
+kubectl get pods --show-labels
+
+
+Deployments
+===========
+Deployments wrap up Pods and ReplicaSets into a nice package that is capable of deploying your applications.
+The nice thing about Deployments is that they are declarative. 
+We tell Kubernetes what state we would like our application to be in and it figures out how to make that happen.
+Let’s clean up all of our current pods and ReplicaSets and see some Deployment examples.
+	 kuard
+
+kubectl delete pod kuard-xxxx
+
+We will create a Deployment configuration file that defines the same state as our ReplicaSet example.
+Actually, you will notice that the only change between declaring a Deployment and a ReplicaSet is the kind (at least in this example).
+
+deployment.yml
+----------------------
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kuard
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: kuard
+  template:
+    metadata:
+      labels:
+        app: kuard
+    spec:
+      containers:
+      - name: kuard
+        image: gcr.io/kuar-demo/kuard-amd64:1
+
+kubectl apply -f deployment.yml
+
+kubectl get deployment,replicaset,pod --show-labels
+
+Creating the Deployment created a ReplicaSet and five pods just like our ReplicaSet example above.
+The difference is that we now have a Deployment object that we can interact with.
+Let’s scale our new Deployment up to ten replicas. We accomplish this by changing the .spec.replicas property. The final YAML will look like so.
+There is a new deployment object that we can interact with now though. Let’s scale up to 10 instances of our application by changing `.spec.replicas` to 10
+
+vi deployment.yml
+-------------------------
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kuard
+spec:
+  replicas: 10
+  selector:
+    matchLabels:
+      app: kuard
+  template:
+    metadata:
+      labels:
+        app: kuard
+    spec:
+      containers:
+      - name: kuard
+        image: gcr.io/kuar-demo/kuard-amd64:1
+
+kubectl apply -f deployment.yml
+kubectl rollout status deployment kuard
+
+
+vi replica1.yaml
+-----------------------
+
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: app1
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: helloworld
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: testconatiner
+        image: tutum/hello-world
+        ports:
+        - containerPort: 89
+
+kubectl create -f replica.yaml
+
+vi ri.yaml
+---------------
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: kubia
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: kubia
+  template:
+    metadata:
+      labels:
+        app: kubia
+    spec:
+      containers:
+      - name: kubia
+        image: luksa/kubia
+
+kubectl create -f ri.yaml
+kubectl get pods
+
+https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/
+
+
+https://kubernetes.io/docs/tutorials/kubernetes-basics/create-cluster/cluster-intro/
+
+ 
